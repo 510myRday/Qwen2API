@@ -1,6 +1,6 @@
 {
   "name": "qwen2api",
-  "version": "2025.08.25.19.00",
+  "version": "2025.09.28.17.13",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/start.js",
@@ -12,7 +12,8 @@
     "pm2:delete": "pm2 delete qwen2api",
     "pm2:logs": "pm2 logs qwen2api",
     "pm2:status": "pm2 status",
-    "pm2:monit": "pm2 monit"
+    "pm2:monit": "pm2 monit",
+    "guest": "node guest/index.js"
   },
   "keywords": [],
   "author": "",
@@ -31,6 +32,7 @@
     "mime-types": "^3.0.1",
     "multer": "^1.4.5-lts.1",
     "pm2": "^6.0.8",
+    "puppeteer": "^22.0.1",
     "tiktoken": "^1.0.21"
   },
   "devDependencies": {

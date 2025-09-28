@@ -11,3 +11,4 @@ pkg_dist/
 .idea
 /public/dist
 pnpm-lock.yaml
+pnpm-workspace.yaml
