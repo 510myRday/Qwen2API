@@ -97,7 +97,7 @@ class GuestImageGenerator {
       logger.info('创建新的聊天会话...', 'GUEST')
       
       const response = await this.axiosInstance.post('/api/v2/chats/new', requestData, { headers })
-      
+      console.log(response.data)
       if (response.data?.success && response.data?.data?.id) {
         const chatId = response.data.data.id
         logger.success(`聊天会话创建成功: ${chatId}`, 'GUEST')
