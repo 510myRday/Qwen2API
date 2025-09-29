@@ -38,12 +38,18 @@ const sendChatRequest = async (body) => {
 
         // console.log(body)
         // console.log(requestConfig)
-        
+
+        const chat_id = await generateChatID(currentToken)
+
         logger.network(`发送聊天请求`, 'REQUEST')
-        const response = await axios.post("https://chat.qwen.ai/api/chat/completions", body, requestConfig)
+        const response = await axios.post("https://chat.qwen.ai/api/v2/chat/completions?chat_id=" + chat_id, {
+            ...body,
+            chat_id: chat_id
+        }, requestConfig)
 
         // 请求成功
         if (response.status === 200) {
+            // console.log(JSON.stringify(response.data))
             return {
                 currentToken: currentToken,
                 status: true,
@@ -52,6 +58,7 @@ const sendChatRequest = async (body) => {
         }
 
     } catch (error) {
+        console.log(error)
         logger.error('发送聊天请求失败', 'REQUEST', '', error.message)
         return {
             status: false,
@@ -60,6 +67,37 @@ const sendChatRequest = async (body) => {
     }
 }
 
+/**
+ * 生成chat_id
+ * @param {*} token 
+ * @returns {Promise<string|null>} 返回生成的chat_id，如果失败则返回null
+ */
+const generateChatID = async (token) => {
+    try {
+        const response_data = await axios.post("https://chat.qwen.ai/api/v2/chats/new", {
+            "title": "New Chat",
+            "models": [
+                "qwen3-235b-a22b"
+            ],
+            "chat_mode": "local",
+            "chat_type": "t2i",
+            "timestamp": new Date().getTime()
+        }, {
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
+            }
+        })
+
+        return response_data.data?.data?.id || null
+
+    } catch (error) {
+        logger.error('生成chat_id失败', 'CHAT', '', error.message)
+        return null
+    }
+}
+
 module.exports = {
-    sendChatRequest
+    sendChatRequest,
+    generateChatID
 }

@@ -16,11 +16,18 @@ load_dotenv()
 API_KEY = os.getenv("API_KEY", "sk-dev123456")
 SERVICE_PORT = os.getenv("SERVICE_PORT", "3000")
 BASE_URL = f"http://localhost:{SERVICE_PORT}/v1"
+CLI_BASE_URL = f"http://localhost:{SERVICE_PORT}/cli/v1"  # CLI端点URL
 
 # 配置 OpenAI 客户端指向本地服务
 client = openai.OpenAI(
     api_key=API_KEY,
     base_url=BASE_URL
+)
+
+# 配置 CLI 端点客户端（用于工具调用测试）
+cli_client = openai.OpenAI(
+    api_key=API_KEY,
+    base_url=CLI_BASE_URL
 )
 
 def test_models():
@@ -43,7 +50,7 @@ def test_chat():
     print("💬 测试聊天对话...")
     try:
         response = client.chat.completions.create(
-            model="qwen-max-latest",
+            model="qwen3-max",
             messages=[
                 {"role": "user", "content": "你好，请用一句话介绍一下自己"}
             ],
@@ -63,7 +70,7 @@ def test_stream():
     print("🌊 测试流式响应...")
     try:
         stream = client.chat.completions.create(
-            model="qwen-max-latest",
+            model="qwen3-max",
             messages=[
                 {"role": "user", "content": "请写一首关于春天的短诗，不超过4行"}
             ],
@@ -97,7 +104,7 @@ def test_thinking_model():
     print("🧠 测试思考模式（流式输出）...")
     try:
         stream = client.chat.completions.create(
-            model="qwen-max-latest-thinking",
+            model="qwen3-max-thinking",
             messages=[
                 {"role": "user", "content": "计算 23 + 45 = ?，请详细展示你的思考过程"}
             ],
@@ -125,10 +132,71 @@ def test_thinking_model():
         print(f"❌ 思考模式失败: {e}")
         return False
 
+def test_tool_calling():
+    """测试工具调用功能（仅在CLI端点支持）"""
+    print("=" * 50)
+    print("🔧 测试工具调用功能...")
+    try:
+        # 定义工具
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_current_weather",
+                    "description": "获取指定城市的当前天气信息",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "city": {
+                                "type": "string",
+                                "description": "城市名称，例如：北京、上海"
+                            }
+                        },
+                        "required": ["city"]
+                    }
+                }
+            }
+        ]
+        
+        # 发送带有工具的请求
+        response = cli_client.chat.completions.create(
+            model="qwen3-coder-plus",  # CLI端点支持的模型
+            messages=[
+                {"role": "user", "content": "今天北京的天气怎么样？"}
+            ],
+            tools=tools,
+            tool_choice="auto",  # 自动选择工具
+            max_tokens=500
+        )
+        
+        # 输出响应
+        print("✅ 工具调用响应:")
+        print(f"完成原因: {response.choices[0].finish_reason}")
+        
+        # 检查是否有工具调用
+        if response.choices[0].finish_reason == "tool_calls":
+            tool_calls = response.choices[0].message.tool_calls
+            print(f"工具调用数量: {len(tool_calls)}")
+            for i, tool_call in enumerate(tool_calls):
+                print(f"工具调用 {i+1}:")
+                print(f"  工具名称: {tool_call.function.name}")
+                print(f"  工具参数: {tool_call.function.arguments}")
+        else:
+            # 普通回复
+            content = response.choices[0].message.content
+            print(f"AI回复: {content}")
+            
+        print(f"📊 Token使用: {response.usage.total_tokens}")
+        return True
+    except Exception as e:
+        print(f"❌ 工具调用测试失败: {e}")
+        return False
+
 def main():
     """主测试函数"""
     print("🚀 开始测试 Qwen2API 服务...")
     print(f"📡 服务地址: {BASE_URL}")
+    print(f"🔧 CLI端点地址: {CLI_BASE_URL}")
     print(f"🔑 API密钥: {API_KEY}")
 
     # 检查配置来源
@@ -138,7 +206,7 @@ def main():
         print("✅ 从 .env 文件读取API密钥")
 
     if SERVICE_PORT == "3000":
-        print("� 提示: 使用默认端口，可在 .env 文件中修改 SERVICE_PORT")
+        print("💡 提示: 使用默认端口，可在 .env 文件中修改 SERVICE_PORT")
     else:
         print(f"✅ 从 .env 文件读取端口: {SERVICE_PORT}")
     
@@ -147,7 +215,8 @@ def main():
         ("模型列表", test_models),
         ("聊天对话", test_chat),
         ("流式响应", test_stream),
-        ("思考模式（流式）", test_thinking_model)
+        ("思考模式（流式）", test_thinking_model),
+        ("工具调用", test_tool_calling)
     ]
     
     results = []

@@ -3,6 +3,7 @@ const { createUsageObject } = require('../utils/precise-tokenizer.js')
 const { sendChatRequest } = require('../utils/request.js')
 const accountManager = require('../utils/account.js')
 const config = require('../config/index.js')
+const axios = require('axios')
 const { logger } = require('../utils/logger')
 
 /**
@@ -238,7 +239,8 @@ const handleStreamResponse = async (res, response, enable_thinking, enable_web_s
  */
 const handleNonStreamResponse = async (res, response, enable_thinking, enable_web_search, model, requestBody = null) => {
     try {
-        const content = response.choices[0].message.content
+        // console.log(JSON.stringify(response))
+        const content = response.data.choices[0].message.content
 
         // 提取prompt文本用于token估算
         let promptText = ''
@@ -333,6 +335,36 @@ const handleChatCompletion = async (req, res) => {
             .json({
                 error: "token无效,请求发送失败！！！"
             })
+    }
+}
+
+/**
+ * 生成chat_id
+ * @param {*} token 
+ * @returns {Promise<string|null>} 返回生成的chat_id，如果失败则返回null
+ */
+const generateChatID = async (token, model, chatType) => {
+    try {
+        const response_data = await axios.post("https://chat.qwen.ai/api/v2/chats/new", {
+            "title": "New Chat",
+            "models": [
+                model
+            ],
+            "chat_mode": "normal",
+            "chat_type": chatType,
+            "timestamp": new Date().getTime()
+        }, {
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json"
+            }
+        })
+
+        return response_data.data?.data?.id || null
+
+    } catch (error) {
+        logger.error('生成chat_id失败', 'CHAT', '', error.message)
+        return null
     }
 }
 
