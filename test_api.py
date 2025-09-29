@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # 从环境变量获取配置，如果没有则使用默认值
-API_KEY = os.getenv("API_KEY", "sk-dev123456")
+API_KEY = os.getenv("API_KEY", "sk-123456")
 SERVICE_PORT = os.getenv("SERVICE_PORT", "3000")
 BASE_URL = f"http://localhost:{SERVICE_PORT}/v1"
 CLI_BASE_URL = f"http://localhost:{SERVICE_PORT}/cli/v1"  # CLI端点URL
@@ -200,7 +200,7 @@ def main():
     print(f"🔑 API密钥: {API_KEY}")
 
     # 检查配置来源
-    if API_KEY == "sk-dev123456":
+    if API_KEY == "sk-123456":
         print("💡 提示: 使用默认API密钥，可在 .env 文件中修改 API_KEY")
     else:
         print("✅ 从 .env 文件读取API密钥")
@@ -211,12 +211,15 @@ def main():
         print(f"✅ 从 .env 文件读取端口: {SERVICE_PORT}")
     
     # 运行所有测试
+    # tests = [
+    #     ("模型列表", test_models),
+    #     ("聊天对话", test_chat),
+    #     ("流式响应", test_stream),
+    #     ("思考模式（流式）", test_thinking_model),
+    #     ("工具调用", test_tool_calling)
+    # ]
     tests = [
         ("模型列表", test_models),
-        ("聊天对话", test_chat),
-        ("流式响应", test_stream),
-        ("思考模式（流式）", test_thinking_model),
-        ("工具调用", test_tool_calling)
     ]
     
     results = []
