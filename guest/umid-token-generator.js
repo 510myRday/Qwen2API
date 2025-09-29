@@ -1,273 +1,159 @@
-const puppeteer = require('puppeteer')
-const { logger } = require('../src/utils/logger')
+const https = require('https');
 
 /**
- * UmidToken 生成器 - 通过真实浏览器环境获取 token
+ * 获取UMID token的完整脚本
+ * 支持从两个URL获取token并解析
  */
+
 class UmidTokenGenerator {
-  constructor() {
-    this.browser = null
-    this.page = null
-    this.isInitialized = false
-    this.tokenCache = null
-    this.cacheExpiry = null
-    this.initPromise = null
-    this.tokenCacheDuration = 5 * 60 * 1000 // 5分钟缓存
-  }
+    constructor() {
+        this.urls = [
+            'https://sg-wum.alibaba.com/w/wu.json',
+            'https://ynuf.aliapp.org/w/wu.json',
 
-  /**
-   * 初始化浏览器实例
-   */
-  async initBrowser() {
-    if (this.initPromise) {
-      return this.initPromise
+        ];
     }
 
-    this.initPromise = this._initBrowser()
-    return this.initPromise
-  }
+    /**
+     * 从响应文本中提取token
+     * @param {string} responseText - 响应文本
+     * @returns {string|null} 提取到的token或null
+     */
+    extractToken(responseText) {
+        // 正则表达式匹配两种格式的token
+        const patterns = [
+            /umx\.wu\('([^']+)'\)/,  // 匹配 umx.wu('token')
+            /__fycb\('([^']+)'\)/     // 匹配 __fycb('token')
+        ];
 
-  async _initBrowser() {
-    try {
-      logger.info('启动 Puppeteer 浏览器...', 'UMID')
-      
-      this.browser = await puppeteer.launch({
-        headless: false, // 使用真实浏览器模式
-        devtools: false, // 关闭开发者工具
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-gpu',
-          '--disable-web-security',
-          '--disable-features=VizDisplayCompositor',
-          '--disable-blink-features=AutomationControlled',
-          '--disable-automation',
-          '--disable-extensions',
-          '--no-default-browser-check',
-          '--disable-default-apps',
-          '--disable-component-extensions-with-background-pages',
-          '--disable-background-networking',
-          '--disable-background-timer-throttling',
-          '--disable-renderer-backgrounding',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-ipc-flooding-protection',
-          '--window-size=1920,1080'
-        ]
-      })
-
-      this.page = await this.browser.newPage()
-
-      // 设置用户代理
-      await this.page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36')
-
-      // 设置视口
-      await this.page.setViewport({ width: 1920, height: 1080 })
-
-      // 增强反检测能力
-      await this.page.evaluateOnNewDocument(() => {
-        // 隐藏 webdriver 特征
-        Object.defineProperty(navigator, 'webdriver', {
-          get: () => undefined,
-        })
-
-        // 隐藏自动化特征
-        delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array
-        delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise
-        delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol
-
-        // 模拟真实浏览器特征
-        Object.defineProperty(navigator, 'plugins', {
-          get: () => [1, 2, 3, 4, 5]
-        })
-
-        Object.defineProperty(navigator, 'languages', {
-          get: () => ['zh-CN', 'zh', 'en']
-        })
-
-        // 覆盖 chrome 对象
-        window.chrome = {
-          runtime: {}
+        for (const pattern of patterns) {
+            const match = responseText.match(pattern);
+            if (match && match[1]) {
+                return match[1];
+            }
         }
-      })
-      
-      logger.info('浏览器初始化完成', 'UMID')
-      this.isInitialized = true
-      
-    } catch (error) {
-      logger.error('浏览器初始化失败', 'UMID', '', error)
-      throw error
+
+        return null;
     }
-  }
 
-  /**
-   * 获取 UmidToken
-   */
-  async generateToken() {
-    try {
-      // 检查缓存
-      if (this.tokenCache && this.cacheExpiry && Date.now() < this.cacheExpiry) {
-        logger.info('使用缓存的 UmidToken', 'UMID')
-        return this.tokenCache
-      }
+    /**
+     * 发起HTTP GET请求
+     * @param {string} url - 请求URL
+     * @returns {Promise<string>} 响应文本
+     */
+    httpGet(url) {
+        return new Promise((resolve, reject) => {
+            const urlObj = new URL(url);
+            
+            const options = {
+                hostname: urlObj.hostname,
+                path: urlObj.pathname + urlObj.search,
+                method: 'GET',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Accept': 'application/json, text/plain, */*',
+                    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Connection': 'keep-alive',
+                    'Referer': 'https://www.alibaba.com/',
+                    'Sec-Fetch-Dest': 'empty',
+                    'Sec-Fetch-Mode': 'cors',
+                    'Sec-Fetch-Site': 'same-site'
+                },
+                timeout: 5000 // 5秒超时
+            };
 
-      // 确保浏览器已初始化
-      if (!this.isInitialized) {
-        await this.initBrowser()
-      }
+            const req = https.request(options, (response) => {
+                let data = '';
 
-      logger.info('开始获取新的 UmidToken...', 'UMID')
+                response.on('data', (chunk) => {
+                    data += chunk;
+                });
 
-      // 访问 Qwen 页面
-      await this.page.goto('https://chat.qwen.ai/', {
-        waitUntil: 'networkidle2',
-        timeout: 30000
-      })
-
-      // 等待页面加载完成和 AWSC 模块加载
-      await new Promise(resolve => setTimeout(resolve, 5000)) // 增加等待时间
-
-      // 尝试获取 UmidToken
-      const token = await this.extractUmidToken()
-
-      if (token && token !== 'default_token') {
-        // 缓存 token
-        this.tokenCache = token
-        this.cacheExpiry = Date.now() + this.tokenCacheDuration
-
-        logger.info(`成功获取 UmidToken: ${token.substring(0, 20)}...`, 'UMID')
-        return token
-      } else {
-        throw new Error('无法获取有效的 UmidToken')
-      }
-
-    } catch (error) {
-      logger.error('获取 UmidToken 失败', 'UMID', '', error)
-      throw error // 直接抛出错误，不使用备用 token
-    }
-  }
-
-  /**
-   * 从页面中提取 UmidToken
-   */
-  async extractUmidToken() {
-    try {
-      // 等待 AWSC 和 WebUMID 模块加载
-      await this.page.waitForFunction(() => {
-        return window.AWSC && window.AWSC.use
-      }, { timeout: 10000 })
-
-      logger.info('AWSC 模块已加载，开始生成 UmidToken...', 'UMID')
-
-      // 使用 AWSC WebUMID 模块生成 token
-      let token = null
-      let attempts = 0
-      const maxAttempts = 3
-
-      while (!token && attempts < maxAttempts) {
-        attempts++
-        logger.info(`尝试生成 UmidToken (第 ${attempts} 次)...`, 'UMID')
-
-        try {
-          token = await this.page.evaluate(() => {
-            return new Promise((resolve) => {
-              const timeout = setTimeout(() => {
-                resolve(null)
-              }, 10000) // 减少超时时间
-
-              if (window.AWSC && window.AWSC.use) {
-                window.AWSC.use('um', (status, umModule) => {
-                  if (status === 'loaded' && umModule) {
-                    try {
-                      umModule.init({
-                        serviceLocation: 'cn'
-                      }, (result, tokenData) => {
-                        clearTimeout(timeout)
-                        if (result === 'success' && tokenData && tokenData.tn) {
-                          resolve(tokenData.tn)
-                        } else {
-                          resolve(null)
-                        }
-                      })
-                    } catch (e) {
-                      clearTimeout(timeout)
-                      resolve(null)
+                response.on('end', () => {
+                    if (response.statusCode === 200) {
+                        resolve(data);
+                    } else {
+                        reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
                     }
-                  } else {
-                    clearTimeout(timeout)
-                    resolve(null)
-                  }
-                })
-              } else {
-                clearTimeout(timeout)
-                resolve(null)
-              }
-            })
-          })
+                });
+            });
 
-          if (token) {
-            break
-          }
+            req.on('error', (error) => {
+                reject(error);
+            });
+
+            req.on('timeout', () => {
+                req.destroy();
+                reject(new Error('请求超时'));
+            });
+
+            req.end();
+        });
+    }
+
+    /**
+     * 从指定URL获取token
+     * @param {string} url - 请求URL
+     * @returns {Promise<string>} token
+     */
+    async getTokenFromUrl(url) {
+        try {
+            console.log(`正在从 ${url} 获取token...`);
+            const responseText = await this.httpGet(url);
+            const token = this.extractToken(responseText);
+
+            if (token) {
+                console.log(`成功获取token: ${token}`);
+                return token;
+            } else {
+                throw new Error('无法从响应中提取token');
+            }
         } catch (error) {
-          logger.warn(`第 ${attempts} 次尝试失败: ${error.message}`, 'UMID')
-          if (attempts < maxAttempts) {
-            await new Promise(resolve => setTimeout(resolve, 1000)) // 等待1秒后重试
-          }
+            throw new Error(`从 ${url} 获取token失败: ${error.message}`);
         }
-      }
-
-      if (token) {
-        logger.success(`成功通过 AWSC 生成 UmidToken: ${token.substring(0, 20)}...`, 'UMID')
-        return token
-      }
-
-      throw new Error(`AWSC WebUMID 模块生成 token 失败 (尝试了 ${maxAttempts} 次)`)
-
-    } catch (error) {
-      logger.error('提取 UmidToken 失败', 'UMID', '', error)
-      throw error
     }
-  }
 
+    /**
+     * 生成UMID token（主函数）
+     * @returns {Promise<string>} UMID token
+     */
+    async generateUmidToken() {
+        // 尝试从所有可用URL获取token
+        for (const url of this.urls) {
+            try {
+                const token = await this.getTokenFromUrl(url);
+                return token;
+            } catch (error) {
+                console.warn(error.message);
+                // 继续尝试下一个URL
+            }
+        }
 
-
-  /**
-   * 清理资源
-   */
-  async cleanup() {
-    try {
-      if (this.page) {
-        await this.page.close()
-        this.page = null
-      }
-      
-      if (this.browser) {
-        await this.browser.close()
-        this.browser = null
-      }
-      
-      this.isInitialized = false
-      this.tokenCache = null
-      this.cacheExpiry = null
-      this.initPromise = null
-      
-      logger.info('浏览器资源已清理', 'UMID')
-    } catch (error) {
-      logger.error('清理浏览器资源失败', 'UMID', '', error)
+        throw new Error('所有URL都尝试失败，无法获取token');
     }
-  }
 
-  /**
-   * 重置缓存
-   */
-  resetCache() {
-    this.tokenCache = null
-    this.cacheExpiry = null
-    logger.info('UmidToken 缓存已重置', 'UMID')
-  }
 }
 
-module.exports = UmidTokenGenerator
+// 创建实例
+const umidGenerator = new UmidTokenGenerator();
+
+// 导出函数（只保留异步版本）
+module.exports = { 
+    generateUmidToken: umidGenerator.generateUmidToken.bind(umidGenerator),
+    UmidTokenGenerator
+};
+
+// 如果直接运行此文件，则执行测试
+if (require.main === module) {
+    (async () => {
+        try {
+            console.log('开始测试UMID token获取...');
+            const token = await umidGenerator.generateUmidToken();
+            console.log('测试成功！获取到的token:', token);
+        } catch (error) {
+            console.error('测试失败:', error.message);
+            console.log('所有URL都尝试失败，无法获取token');
+        }
+    })();
+}

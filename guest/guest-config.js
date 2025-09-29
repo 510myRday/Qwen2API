@@ -44,6 +44,38 @@ const GUEST_CONFIG = {
   retry: {
     maxAttempts: 3,
     delay: 1000
+  },
+
+  /**
+   * 生成请求头配置
+   * @param {Object} metadata - 请求元数据
+   * @param {string} dynamicUmidToken - 动态UMID token
+   * @param {Function} generateBrowserFingerprint - 浏览器指纹生成函数
+   * @param {boolean} includeChatHeaders - 是否包含聊天头信息，默认为false
+   * @param {boolean} includeReferer - 是否包含Referer头，默认为false
+   * @returns {Object} 完整的请求头配置
+   */
+  generateHeaders(metadata, dynamicUmidToken, generateBrowserFingerprint, includeChatHeaders = false, includeReferer = false) {
+    const headers = {
+      ...this.defaultHeaders,
+      'bx-ua': generateBrowserFingerprint(),
+      'bx-umidtoken': dynamicUmidToken,
+      'bx-v': '2.5.31',
+      'timezone': metadata.timezone,
+      'x-request-id': metadata.requestId
+    }
+
+    // 如果需要包含聊天头信息
+    if (includeChatHeaders) {
+      Object.assign(headers, this.chatHeaders)
+    }
+
+    // 如果需要包含Referer头
+    if (includeReferer) {
+      headers['Referer'] = 'https://chat.qwen.ai/c/guest'
+    }
+
+    return headers
   }
 }
 

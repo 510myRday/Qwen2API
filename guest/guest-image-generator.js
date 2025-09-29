@@ -2,18 +2,28 @@ const axios = require('axios')
 const crypto = require('crypto')
 const { logger } = require('../src/utils/logger')
 const GUEST_CONFIG = require('./guest-config')
-const UmidTokenGenerator = require('./umid-token-generator')
+const { generateUmidToken } = require('./umid-token-generator')
 
-// 创建全局的 UmidToken 生成器实例
-const umidGenerator = new UmidTokenGenerator()
 
-/**
- * Guest 模式文生图生成器
- */
 class GuestImageGenerator {
   constructor() {
     this.config = GUEST_CONFIG
     this.axiosInstance = this.createAxiosInstance()
+    this.dynamicUmidToken = null
+    this.initPromise = this.initializeUmidToken()
+  }
+
+  /**
+   * 初始化UMID token
+   */
+  async initializeUmidToken() {
+    try {
+      this.dynamicUmidToken = await generateUmidToken()
+    } catch (error) {
+      console.error('初始化UMID token失败:', error.message)
+      // 可以设置一个默认值或抛出错误
+      throw error
+    }
   }
 
   /**
@@ -59,23 +69,14 @@ class GuestImageGenerator {
   }
 
   /**
-   * 动态获取 UmidToken - 每次都生成新的
-   */
-  async getDynamicUmidToken() {
-    const token = await umidGenerator.generateToken()
-    logger.info(`获取到全新的动态 UmidToken: ${token.substring(0, 20)}...`, 'GUEST')
-    return token
-  }
-
-  /**
    * 创建新的聊天会话
    * @param {string} chatType - 聊天类型，默认为 't2i'
    * @returns {Promise<string>} 聊天会话 ID
    */
   async createNewChat(chatType = 't2i') {
     try {
+      await this.initPromise;
       const metadata = this.generateRequestMetadata()
-      const dynamicUmidToken = await this.getDynamicUmidToken()
 
       const requestData = {
         title: '新建对话',
@@ -85,14 +86,13 @@ class GuestImageGenerator {
         timestamp: metadata.timestamp
       }
 
-      const headers = {
-        ...this.config.defaultHeaders,
-        'bx-ua': this.generateBrowserFingerprint(),
-        'bx-umidtoken': dynamicUmidToken,
-        'bx-v': '2.5.31',
-        'timezone': metadata.timezone,
-        'x-request-id': metadata.requestId
-      }
+      const headers = this.config.generateHeaders(
+        metadata,
+        this.dynamicUmidToken,
+        this.generateBrowserFingerprint.bind(this),
+        false,
+        false
+      )
 
       logger.info('创建新的聊天会话...', 'GUEST')
       
@@ -120,6 +120,7 @@ class GuestImageGenerator {
    */
   async generateImage(chatId, prompt, size = '1:1') {
     try {
+      await this.initPromise;
       if (!this.config.supportedSizes.includes(size)) {
         logger.warn(`不支持的图片尺寸: ${size}，使用默认尺寸: ${this.config.defaultSize}`, 'GUEST')
         size = this.config.defaultSize
@@ -127,7 +128,6 @@ class GuestImageGenerator {
 
       const metadata = this.generateRequestMetadata()
       const messageId = this.generateUUID()
-      const dynamicUmidToken = await this.getDynamicUmidToken()
 
       const requestData = {
         stream: true,
@@ -163,16 +163,13 @@ class GuestImageGenerator {
         size: size
       }
 
-      const headers = {
-        ...this.config.defaultHeaders,
-        ...this.config.chatHeaders,
-        'bx-ua': this.generateBrowserFingerprint(),
-        'bx-umidtoken': dynamicUmidToken,
-        'bx-v': '2.5.31',
-        'timezone': metadata.timezone,
-        'x-request-id': metadata.requestId,
-        'Referer': 'https://chat.qwen.ai/c/guest'
-      }
+      const headers = this.config.generateHeaders(
+        metadata,
+        this.dynamicUmidToken,
+        this.generateBrowserFingerprint.bind(this),
+        true,
+        true
+      )
 
       logger.info(`开始生成图片，提示词: ${prompt}`, 'GUEST')
       
@@ -343,26 +340,6 @@ class GuestImageGenerator {
       logger.error('一键生成图片失败', 'GUEST', '', error)
       throw error
     }
-  }
-
-  /**
-   * 清理资源
-   */
-  async cleanup() {
-    try {
-      await umidGenerator.cleanup()
-      logger.info('Guest 图片生成器资源已清理', 'GUEST')
-    } catch (error) {
-      logger.error('清理 Guest 图片生成器资源失败', 'GUEST', '', error)
-    }
-  }
-
-  /**
-   * 重置 token 缓存
-   */
-  resetTokenCache() {
-    umidGenerator.resetCache()
-    logger.info('Guest 图片生成器 token 缓存已重置', 'GUEST')
   }
 }
 
